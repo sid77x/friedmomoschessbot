@@ -1,0 +1,6 @@
+python-chess>=1.999
+numpy>=1.26.0
+requests>=2.32.0
+scikit-learn>=1.4.0
+# Optional but recommended for neural evaluator:
+# torch>=2.2.0
