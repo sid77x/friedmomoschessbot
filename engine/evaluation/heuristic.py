@@ -125,6 +125,9 @@ class HeuristicEvaluator:
             + 8.0 * f["space"]
             + 1.5 * f["king_safety"]
             + 0.08 * f["tactical_pressure"]
+            + 14.0 * f["pin_pressure"]
+            + 12.0 * f["skewer_pressure"]
+            + 12.0 * f["fork_pressure"]
             - 0.30 * f["hanging_material"]
             - 18.0 * f["pawn_doubled"]
             - 14.0 * f["pawn_isolated"]
@@ -141,6 +144,7 @@ class HeuristicEvaluator:
                 18.0 * f["development"]
                 + 10.0 * f["center_control"]
                 + 8.0 * f["king_safety"]
+                + 6.0 * f["pin_pressure"]
                 - 24.0 * f["early_queen_penalty"]
             )
 
@@ -150,6 +154,9 @@ class HeuristicEvaluator:
                 + 10.0 * f["center_control"]
                 + 10.0 * f["king_confinement"]
                 + 0.12 * f["tactical_pressure"]
+                + 16.0 * f["pin_pressure"]
+                + 14.0 * f["skewer_pressure"]
+                + 14.0 * f["fork_pressure"]
             )
 
         return (

@@ -1,19 +1,75 @@
 # Ensemble Chess Engine (AI Lab Project)
 
-A modular production-style chess engine in Python that combines multiple AI paradigms:
+This engine is a modular Python chess engine designed for GUI play, UCI usage, and Lichess bot integration.
+
+It combines:
 
 - Classical heuristic evaluation
-- Lightweight ML evaluation (RandomForest fallback to linear model)
-- Lightweight neural evaluation (PyTorch, optional)
-- Positional activity model
-- Weighted ensemble with dynamic game-phase blending
+- ML evaluator (RandomForest fallback to linear model)
+- Neural evaluator (PyTorch when available)
+- Positional evaluator
+- RL TD evaluator
+- RL deep value evaluator
+- Phase-aware weighted ensemble
 
-Supports two primary modes:
+## Recent Upgrades Included
 
-1. Local GUI mode (human vs AI, AI vs AI)
-2. Online mode through Lichess Bot API
+The following upgrades are implemented in this codebase:
 
-Also includes optional UCI mode for Arena/CuteChess.
+1. Stability and time-management improvements
+
+- UCI think-time bounding to prevent long stalls
+- Better correspondence responsiveness
+- Improved engine fallback behavior so a legal move is still produced when needed
+
+2. Search and tactical behavior improvements
+
+- Forced mate-in-1 detection at root
+- Draw/repetition handling that avoids draw loops when clearly winning
+- Stalemate-avoidance penalty when ahead
+- Better quiescence handling for checking lines
+
+3. Tactical feature upgrades
+
+- Explicit pin pressure feature
+- Explicit skewer pressure feature
+- Explicit fork pressure feature
+- Tactical features integrated into heuristic and positional evaluators
+
+4. Endgame and checkmate curriculum
+
+- Endgame mating objectives in heuristic evaluator:
+  - KQK
+  - KRK
+  - KBNK
+  - KPK
+  - Ladder mate motifs
+- Training curriculum module with:
+  - One-queen mate drills
+  - One-rook mate drills
+  - Single-pawn conversion drills
+  - Ladder mate drills
+  - Knight+bishop mating-net drills
+  - Generated mate-in-1 and mate-in-2 tactical samples
+
+5. RL integration and training
+
+- Added RL TD model: models/rl_td_model.pkl
+- Added RL deep model: models/rl_deep_model.pt (requires torch)
+- Integrated RL models into ensemble phase weights
+- Added readiness gating: untrained neural/RL models do not inject random noise
+- Added ensemble weight renormalization over available trained models only
+
+6. Unified all-model training pipeline
+
+- scripts/train_models.py now trains all available models in one run:
+  - ML
+  - Neural (if torch installed)
+  - RL TD
+  - RL deep (if torch installed)
+- Uses mixed random-position data plus checkmate curriculum data
+- Supports fixed time budget with --minutes
+- Saves models in chess engine/models regardless of launch directory
 
 ## Project Structure
 
@@ -27,182 +83,96 @@ engine/
   uci.py
   main.py
   evaluation/
-      features.py
-      heuristic.py
-      ml_model.py
-      neural_model.py
-      positional.py
-      ensemble.py
+    features.py
+    heuristic.py
+    positional.py
+    ml_model.py
+    neural_model.py
+    rl_td_model.py
+    rl_deep_model.py
+    checkmate_curriculum.py
+    ensemble.py
 main.py
 scripts/train_models.py
+models/
 requirements.txt
 README.md
 
-## Key Features
-
-- Full chess rules via python-chess bitboard engine:
-  - legal move generation
-  - castling
-  - en passant
-  - promotions
-  - game state and move history
-- Search engine:
-  - Minimax/Negamax with Alpha-Beta pruning
-  - Iterative deepening
-  - Move ordering (TT move, captures, killers, history)
-  - Quiescence search
-  - Transposition table
-- Ensemble evaluation:
-  - final_score = w1*M1 + w2*M2 + w3*M3 + w4*M4
-  - Dynamic phase-aware weights (opening/midgame/endgame)
-- Opening book:
-  - 35+ popular opening lines
-  - roughly 6 to 7 moves deep per line
-  - instant move selection when a match exists
-- Logging/search stats:
-  - nodes searched
-  - quiescence nodes
-  - time per move
-  - depth reached
-  - model score breakdown support
-
 ## Setup
 
-1) Create and activate a Python environment.
+1. Create and activate environment
 
-2) Install dependencies:
+- Windows PowerShell:
 
-pip install -r requirements.txt
+  .\.venv\Scripts\Activate.ps1
 
-3) Optional neural model dependency:
+2. Install dependencies
 
-pip install torch
+  pip install -r requirements.txt
 
-If torch is not installed, the engine still runs with heuristic + ML + positional evaluators.
+3. Install torch (required for neural + deep RL)
 
-## Train ML and Neural Components
+  pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-Quick training (recommended for project demo):
+If torch is unavailable, the engine still runs and trains ML + RL TD + heuristic + positional components.
 
-python -m engine.main --mode train
+## Training (Recommended)
 
-Custom training:
+Run unified training from repository root:
 
-python -m engine.main --mode train --ml-samples 6000 --nn-samples 8000 --nn-epochs 10
+  .\chess engine\.venv\Scripts\python.exe .\chess engine\scripts\train_models.py --minutes 18
 
-Skip neural training:
+Optional flags:
 
-python -m engine.main --mode train --skip-neural
+- --minutes 15
+- --skip-neural
+- --skip-rl
+- --ml-samples 8000 --nn-samples 10000 --nn-epochs 12
 
-Artifacts are saved to:
+Expected artifacts:
 
-- models/ml_model.pkl
-- models/neural_model.pt
+- chess engine/models/ml_model.pkl
+- chess engine/models/neural_model.pt (if torch available)
+- chess engine/models/rl_td_model.pkl
+- chess engine/models/rl_deep_model.pt (if torch available)
 
-Training data is generated from randomized legal positions and labeled by the classical evaluator for lightweight CPU training.
+## Run Modes
 
-## Run GUI Mode
+GUI mode:
 
-Human vs AI (default):
+  python -m engine.main --mode gui --depth 4 --think-time 1.8
 
-python -m engine.main --mode gui --depth 4 --think-time 1.8
+UCI mode:
 
-Switch to AI vs AI in the GUI dropdown.
+  python -m engine.main --mode uci
 
-GUI shows:
+Lichess API mode (direct):
 
-- board
-- last move highlighting
-- live evaluation
-- move/depth/nodes/time status
+  python -m engine.main --mode lichess --token YOUR_TOKEN
 
-Piece visuals:
+## Lichess-Bot Integration (Recommended)
 
-- Place piece PNG files in assets/pieces using names:
-  wp.png wn.png wb.png wr.png wq.png wk.png bp.png bn.png bb.png br.png bq.png bk.png
-- If these files are present, the GUI uses image sprites.
-- If not present, it falls back to Unicode chess glyphs (not letter symbols).
+Use lichess-bot to run this engine in production.
 
-## Run Lichess Bot Mode
+From lichess-bot root:
 
-1) Create a Lichess bot account and token.
-2) Set token as environment variable or pass it directly.
+  .\chess engine\.venv\Scripts\python.exe .\lichess-bot.py --config .\config.yml
 
-Using environment variable:
+Engine protocol support includes:
 
-set LICHESS_BOT_TOKEN=YOUR_TOKEN_HERE
-python -m engine.main --mode lichess --depth 5 --think-time 2.0
-
-Using CLI argument:
-
-python -m engine.main --mode lichess --token YOUR_TOKEN_HERE
-
-Behavior:
-
-- Listens to incoming events
-- Accepts standard challenges
-- Streams game state
-- Selects and sends moves via engine
-- Basic resign/draw offering logic
-- Handles time control with adaptive think time
-
-## Recommended Lichess Integration (lichess-bot)
-
-The most reliable way to run this engine on Lichess is through lichess-bot using UCI mode.
-
-1) Install and set up lichess-bot from:
-https://github.com/lichess-bot-devs/lichess-bot
-
-2) Copy this project template into your lichess-bot folder as config.yml:
-
-- lichess-bot-config.yml.example
-
-3) Update token and paths in config.yml, then run lichess-bot.
-
-Engine command used by lichess-bot:
-
-python -m engine.main --mode uci
-
-This engine now supports the UCI commands typically used by lichess-bot:
-
-- uci / isready / ucinewgame / quit
+- uci, isready, ucinewgame, quit
 - position startpos|fen ... moves ...
-- go with movetime/depth and standard clock args (wtime, btime, winc, binc, movestogo)
-- setoption for Skill Level and Move Overhead
+- go movetime/depth/wtime/btime/winc/binc/movestogo
+- setoption Skill Level and Move Overhead
 
-Security note:
+## Notes on Model Readiness
 
-- If you posted or exposed your Lichess token anywhere public, rotate/regenerate it in your Lichess account before use.
+- Ensemble uses readiness-aware weights.
+- If a model file is not present (or torch is unavailable), that model gets weight 0 and remaining model weights are renormalized.
+- This keeps evaluation stable and avoids random untrained outputs.
 
-## Optional UCI Mode
+## Security and Publishing
 
-python -m engine.main --mode uci
-
-Then connect engine process in Arena/CuteChess as a UCI engine.
-
-## Performance Notes
-
-- CPU-friendly search target: depth 3 to 5
-- Uses transposition table and move ordering for speed
-- Book moves are instant
-
-## Suggested Demo Flow (AI Lab)
-
-1) Train models quickly on laptop CPU
-2) Show Human vs AI GUI game
-3) Switch to AI vs AI to show autonomous play
-4) Explain ensemble breakdown and phase-weight changes
-5) Show Lichess bot integration architecture
-
-## Limitations
-
-- Synthetic training labels are heuristic-based, not super-GM quality
-- No opening learning from online games yet
-- Endgame tablebases are not included
-
-## Next Improvements
-
-- Add persisted transposition table cache between moves/games
-- Add PGN ingestion for stronger supervised labels
-- Add stronger time management and contempt settings
-- Expand draw/resign heuristics with material-aware logic
+- Do not commit secrets (tokens, .env, private keys).
+- Keep config.yml private; use config.yml.default and examples for sharing.
+- .gitignore in repo root is hardened for venvs, local models, logs, and sensitive files.

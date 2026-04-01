@@ -262,6 +262,119 @@ def _tactical_pressure(board: chess.Board) -> int:
     return score
 
 
+def _piece_value(piece: chess.Piece | None) -> int:
+    if piece is None:
+        return 0
+    if piece.piece_type == chess.KING:
+        return 20000
+    return PIECE_VALUES.get(piece.piece_type, 0)
+
+
+def _ray_squares(from_sq: chess.Square, df: int, dr: int) -> List[chess.Square]:
+    f = chess.square_file(from_sq) + df
+    r = chess.square_rank(from_sq) + dr
+    squares: List[chess.Square] = []
+    while 0 <= f < 8 and 0 <= r < 8:
+        squares.append(chess.square(f, r))
+        f += df
+        r += dr
+    return squares
+
+
+def _sliding_dirs(piece_type: chess.PieceType) -> List[tuple[int, int]]:
+    if piece_type == chess.BISHOP:
+        return [(1, 1), (1, -1), (-1, 1), (-1, -1)]
+    if piece_type == chess.ROOK:
+        return [(1, 0), (-1, 0), (0, 1), (0, -1)]
+    if piece_type == chess.QUEEN:
+        return [
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),
+        ]
+    return []
+
+
+def _pin_pressure(board: chess.Board) -> int:
+    def pinned_cost(color: chess.Color) -> int:
+        total = 0
+        for sq, piece in board.piece_map().items():
+            if piece.color != color or piece.piece_type == chess.KING:
+                continue
+            if board.is_pinned(color, sq):
+                total += max(1, _piece_value(piece) // 120)
+        return total
+
+    return pinned_cost(chess.BLACK) - pinned_cost(chess.WHITE)
+
+
+def _skewer_pressure(board: chess.Board) -> int:
+    def side_score(color: chess.Color) -> int:
+        enemy = not color
+        total = 0
+
+        for from_sq, piece in board.piece_map().items():
+            if piece.color != color or piece.piece_type not in (chess.BISHOP, chess.ROOK, chess.QUEEN):
+                continue
+
+            for df, dr in _sliding_dirs(piece.piece_type):
+                first_piece: chess.Piece | None = None
+                second_piece: chess.Piece | None = None
+
+                for sq in _ray_squares(from_sq, df, dr):
+                    hit = board.piece_at(sq)
+                    if hit is None:
+                        continue
+                    if first_piece is None:
+                        first_piece = hit
+                    else:
+                        second_piece = hit
+                        break
+
+                if first_piece is None or second_piece is None:
+                    continue
+                if first_piece.color != enemy or second_piece.color != enemy:
+                    continue
+
+                front_val = _piece_value(first_piece)
+                back_val = _piece_value(second_piece)
+                if front_val > back_val and back_val >= PIECE_VALUES[chess.PAWN]:
+                    total += max(1, (front_val - back_val) // 180)
+
+        return total
+
+    return side_score(chess.WHITE) - side_score(chess.BLACK)
+
+
+def _fork_pressure(board: chess.Board) -> int:
+    def side_score(color: chess.Color) -> int:
+        enemy = not color
+        total = 0
+
+        for from_sq, piece in board.piece_map().items():
+            if piece.color != color or piece.piece_type == chess.KING:
+                continue
+
+            targets: List[int] = []
+            for sq in board.attacks(from_sq):
+                victim = board.piece_at(sq)
+                if victim and victim.color == enemy:
+                    targets.append(_piece_value(victim))
+
+            if len(targets) >= 2:
+                targets.sort(reverse=True)
+                total += max(1, (targets[0] + targets[1]) // 260)
+
+        return total
+
+    return side_score(chess.WHITE) - side_score(chess.BLACK)
+
+
 def game_phase(board: chess.Board) -> str:
     non_pawn = 0
     for piece_type in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
@@ -289,6 +402,9 @@ def extract_feature_dict(board: chess.Board) -> Dict[str, float]:
         "king_confinement": float(_king_confinement(board)),
         "hanging_material": float(_hanging_material(board)),
         "tactical_pressure": float(_tactical_pressure(board)),
+        "pin_pressure": float(_pin_pressure(board)),
+        "skewer_pressure": float(_skewer_pressure(board)),
+        "fork_pressure": float(_fork_pressure(board)),
         "pawn_doubled": float(pawn_data["doubled"]),
         "pawn_isolated": float(pawn_data["isolated"]),
         "pawn_passed": float(pawn_data["passed"]),
