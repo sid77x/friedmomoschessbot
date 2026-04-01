@@ -68,6 +68,9 @@ class MLEvaluator:
         with open(self.model_path, "wb") as f:
             pickle.dump(payload, f)
 
+    def _features_compatible(self, new_names: List[str]) -> bool:
+        return bool(self.meta and self.meta.feature_names and self.meta.feature_names == new_names)
+
     def train(self, positions: Sequence[chess.Board], labels: Sequence[float]) -> None:
         vectors = [extract_feature_vector(b) for b in positions]
         X = np.array([v.values for v in vectors], dtype=np.float32)
@@ -76,9 +79,30 @@ class MLEvaluator:
         if X.size == 0:
             return
 
+        new_feature_names = vectors[0].names if vectors else []
+
+        # Incremental path: if an existing sklearn RF model uses the same feature
+        # schema, warm-start and grow the forest instead of resetting it.
+        can_increment_rf = (
+            SKLEARN_AVAILABLE
+            and self.meta is not None
+            and self.meta.backend == "sklearn"
+            and self.model is not None
+            and isinstance(self.model, RandomForestRegressor)
+            and self._features_compatible(new_feature_names)
+        )
+
+        if can_increment_rf:
+            current_trees = int(getattr(self.model, "n_estimators", 120))
+            self.model.set_params(warm_start=True, n_estimators=current_trees + 48)
+            self.model.fit(X, y)
+            self.meta = MLModelMeta(backend="sklearn", feature_names=new_feature_names)
+            self._save()
+            return
+
         self.meta = MLModelMeta(
             backend="sklearn" if SKLEARN_AVAILABLE else "linear",
-            feature_names=vectors[0].names if vectors else [],
+            feature_names=new_feature_names,
         )
 
         if SKLEARN_AVAILABLE:
@@ -88,13 +112,28 @@ class MLEvaluator:
                 min_samples_leaf=3,
                 random_state=7,
                 n_jobs=-1,
+                warm_start=False,
             )
             self.model.fit(X, y)
         else:
-            X_aug = np.hstack([X, np.ones((X.shape[0], 1), dtype=np.float32)])
-            w, *_ = np.linalg.lstsq(X_aug, y, rcond=None)
-            self.weights = w[:-1]
-            self.bias = float(w[-1])
+            can_increment_linear = (
+                self.weights is not None
+                and self._features_compatible(new_feature_names)
+                and len(self.weights) == X.shape[1]
+            )
+
+            if can_increment_linear:
+                lr = 8e-4
+                for _ in range(6):
+                    pred = X @ self.weights + self.bias
+                    err = y - pred
+                    self.weights += lr * (X.T @ err) / max(1, len(X))
+                    self.bias += float(lr * np.mean(err))
+            else:
+                X_aug = np.hstack([X, np.ones((X.shape[0], 1), dtype=np.float32)])
+                w, *_ = np.linalg.lstsq(X_aug, y, rcond=None)
+                self.weights = w[:-1]
+                self.bias = float(w[-1])
 
         self._save()
 

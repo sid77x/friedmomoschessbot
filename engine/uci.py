@@ -13,7 +13,7 @@ class UCIProtocol:
         self.board = chess.Board()
         self.default_depth = 5
         self.default_movetime_ms = 1800
-        self.max_think_time_s = 12.0
+        self.max_think_time_s = 20.0
 
     def run(self) -> None:
         while True:

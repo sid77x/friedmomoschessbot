@@ -72,6 +72,8 @@ class RLTDLinearEvaluator:
             "king_safety": 200.0,
             "development": 8.0,
             "early_queen_penalty": 2.0,
+            "castling_completion": 2.0,
+            "rook_early_penalty": 3.0,
             "king_activity": 8.0,
             "king_confinement": 8.0,
             "hanging_material": 1000.0,

@@ -128,7 +128,7 @@ class HeuristicEvaluator:
             + 14.0 * f["pin_pressure"]
             + 12.0 * f["skewer_pressure"]
             + 12.0 * f["fork_pressure"]
-            - 0.30 * f["hanging_material"]
+            + 0.45 * f["hanging_material"]
             - 18.0 * f["pawn_doubled"]
             - 14.0 * f["pawn_isolated"]
             + 18.0 * f["pawn_passed"]
@@ -144,8 +144,10 @@ class HeuristicEvaluator:
                 18.0 * f["development"]
                 + 10.0 * f["center_control"]
                 + 8.0 * f["king_safety"]
+                + 34.0 * f["castling_completion"]
                 + 6.0 * f["pin_pressure"]
                 - 24.0 * f["early_queen_penalty"]
+                - 36.0 * f["rook_early_penalty"]
             )
 
         if phase == "midgame":
@@ -198,6 +200,10 @@ class HeuristicEvaluator:
         center_dist = abs(rank - 3.5) + abs(file_ - 3.5)
         return center_dist * 10.0
 
+    def _is_light_square(self, sq: chess.Square) -> bool:
+        # Light square when file+rank is odd in chessboard coordinates.
+        return (chess.square_file(sq) + chess.square_rank(sq)) % 2 == 1
+
     def _king_distance(self, a: chess.Square | None, b: chess.Square | None) -> float:
         if a is None or b is None:
             return 0.0
@@ -244,9 +250,9 @@ class HeuristicEvaluator:
             return 0.0
 
         bishop_sq = next(iter(bishops))
-        bishop_light = chess.square_color(bishop_sq)
+        bishop_light = self._is_light_square(bishop_sq)
         corners = [chess.A1, chess.H1, chess.A8, chess.H8]
-        target_corners = [c for c in corners if chess.square_color(c) == bishop_light]
+        target_corners = [c for c in corners if self._is_light_square(c) == bishop_light]
 
         def corner_dist(corner: chess.Square) -> float:
             cr, cf = chess.square_rank(corner), chess.square_file(corner)

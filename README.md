@@ -21,6 +21,7 @@ The following upgrades are implemented in this codebase:
 - UCI think-time bounding to prevent long stalls
 - Better correspondence responsiveness
 - Improved engine fallback behavior so a legal move is still produced when needed
+- Faster correspondence re-check cycle support via config (smaller checkin period)
 
 2. Search and tactical behavior improvements
 
@@ -36,7 +37,13 @@ The following upgrades are implemented in this codebase:
 - Explicit fork pressure feature
 - Tactical features integrated into heuristic and positional evaluators
 
-4. Endgame and checkmate curriculum
+4. Opening-principle discipline upgrades
+
+- Added castling completion feature for opening objectives
+- Added early-rook-move penalty feature to discourage premature rook lifts
+- Increased opening weight on development + castling, and stronger penalties for early queen/rook drift
+
+5. Endgame and checkmate curriculum
 
 - Endgame mating objectives in heuristic evaluator:
   - KQK
@@ -51,8 +58,13 @@ The following upgrades are implemented in this codebase:
   - Ladder mate drills
   - Knight+bishop mating-net drills
   - Generated mate-in-1 and mate-in-2 tactical samples
+  - Non-mate tactical/strategic samples (development, castling, defensive play, anti-early-rook drift)
+  - Exchange and sacrifice motif samples
+  - Decoy / deflection / discovered-attack themes
+  - Fork, double-attack, and skewer themes
+  - Promotion-priority samples (favoring queen promotion over weak underpromotion)
 
-5. RL integration and training
+6. RL integration and training
 
 - Added RL TD model: models/rl_td_model.pkl
 - Added RL deep model: models/rl_deep_model.pt (requires torch)
@@ -60,14 +72,16 @@ The following upgrades are implemented in this codebase:
 - Added readiness gating: untrained neural/RL models do not inject random noise
 - Added ensemble weight renormalization over available trained models only
 
-6. Unified all-model training pipeline
+7. Unified all-model training pipeline
 
 - scripts/train_models.py now trains all available models in one run:
   - ML
   - Neural (if torch installed)
   - RL TD
   - RL deep (if torch installed)
-- Uses mixed random-position data plus checkmate curriculum data
+- ML training is incremental across sessions when the feature schema is unchanged
+  (RandomForest warm-start adds trees instead of resetting the model)
+- Uses mixed random-position data plus mixed curriculum data (mates + tactics + principles)
 - Supports fixed time budget with --minutes
 - Saves models in chess engine/models regardless of launch directory
 
@@ -129,6 +143,16 @@ Optional flags:
 - --skip-rl
 - --ml-samples 8000 --nn-samples 10000 --nn-epochs 12
 
+Train with master-level PGN supervision (recommended for stronger middlegame plans):
+
+  .\chess engine\.venv\Scripts\python.exe .\chess engine\scripts\train_models.py --minutes 18 --pgn ".\data\masters.pgn" --min-elo 2200 --max-pgn-games 1500 --pgn-sample-every 4
+
+PGN notes:
+
+- Use strong game datasets (Lichess elite games, titled events, or curated master PGNs).
+- The trainer blends game-result supervision with heuristic labels.
+- PGN positions are added on top of random positions and mixed curriculum, not as a replacement.
+
 Expected artifacts:
 
 - chess engine/models/ml_model.pkl
@@ -170,6 +194,7 @@ Engine protocol support includes:
 - Ensemble uses readiness-aware weights.
 - If a model file is not present (or torch is unavailable), that model gets weight 0 and remaining model weights are renormalized.
 - This keeps evaluation stable and avoids random untrained outputs.
+- If feature dimensions change (for example after adding new features), models with incompatible old checkpoints are safely reinitialized or partially loaded.
 
 ## Security and Publishing
 

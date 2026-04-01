@@ -61,7 +61,23 @@ class RLDeepEvaluator:
         if self.model is None or not os.path.exists(self.model_path):
             return
         state = torch.load(self.model_path, map_location="cpu")
-        self.model.load_state_dict(state)
+
+        # Allow backwards compatibility when feature dimensions change
+        # (for example after adding new tactical features). Only load
+        # tensors that still match the current model's parameter shapes.
+        current_state = self.model.state_dict()
+        compatible_state = {
+            key: value
+            for key, value in state.items()
+            if key in current_state and current_state[key].shape == value.shape
+        }
+
+        if not compatible_state:
+            self.model.eval()
+            self._has_trained_weights = False
+            return
+
+        self.model.load_state_dict(compatible_state, strict=False)
         self.model.eval()
         self._has_trained_weights = True
 

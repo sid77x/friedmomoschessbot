@@ -42,7 +42,7 @@ class SearchEngine:
         self,
         evaluator: Optional[EnsembleEvaluator] = None,
         opening_book: Optional[OpeningBook] = None,
-        max_quiescence_depth: int = 6,
+        max_quiescence_depth: int = 4,
     ) -> None:
         self.evaluator = evaluator or EnsembleEvaluator()
         self.opening_book = opening_book or OpeningBook.from_builtin()
@@ -52,6 +52,7 @@ class SearchEngine:
         self.tt: Dict[str, TTEntry] = {}
         self.killers: Dict[int, Tuple[Optional[chess.Move], Optional[chess.Move]]] = {}
         self.history_scores: Dict[str, int] = {}
+        self.eval_cache: Dict[str, float] = {}
 
         self.nodes = 0
         self.qnodes = 0
@@ -70,6 +71,7 @@ class SearchEngine:
         self.nodes = 0
         self.qnodes = 0
         self.tt_hits = 0
+        self.eval_cache.clear()
         self._timed_out = False
         self._time_deadline = start + max(time_limit_s, 0.01)
 
@@ -153,7 +155,7 @@ class SearchEngine:
         beta = INF
         best_score = -INF
         best_move = None
-        static_eval = self.evaluator.evaluate(board)
+        static_eval = self._static_eval(board)
 
         key = position_key(board)
         tt_move = self.tt.get(key).best_move if key in self.tt else None
@@ -283,7 +285,7 @@ class SearchEngine:
 
         self.qnodes += 1
 
-        stand_pat = self.evaluator.evaluate(board)
+        stand_pat = self._static_eval(board)
         if stand_pat >= beta:
             return beta
         if stand_pat > alpha:
@@ -333,9 +335,32 @@ class SearchEngine:
         return is_check
 
     def _draw_score(self, board: chess.Board) -> float:
-        static = self.evaluator.evaluate(board)
+        static = self._static_eval(board)
         if static > 180:
             return -80.0
         if static < -180:
             return 80.0
         return 0.0
+
+    def _static_eval(self, board: chess.Board) -> float:
+        key = position_key(board)
+        if key in self.eval_cache:
+            return self.eval_cache[key]
+
+        # Fast node evaluation for search speed: avoid expensive ML/RL calls on
+        # every interior node. Full ensemble is still used for final breakdown.
+        value: float
+        heuristic_eval = getattr(self.evaluator, "heuristic", None)
+        positional_eval = getattr(self.evaluator, "positional_model", None)
+
+        if heuristic_eval is not None and positional_eval is not None:
+            h = float(heuristic_eval.evaluate(board))
+            p = float(positional_eval.evaluate(board))
+            value = 0.72 * h + 0.28 * p
+        elif heuristic_eval is not None:
+            value = float(heuristic_eval.evaluate(board))
+        else:
+            value = float(self.evaluator.evaluate(board))
+
+        self.eval_cache[key] = value
+        return value

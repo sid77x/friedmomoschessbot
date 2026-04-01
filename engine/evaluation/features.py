@@ -210,6 +210,40 @@ def _early_queen_penalty(board: chess.Board) -> int:
     return penalty_white - penalty_black
 
 
+def _castling_completion(board: chess.Board) -> int:
+    white_castled = 1 if board.king(chess.WHITE) in (chess.G1, chess.C1) else 0
+    black_castled = 1 if board.king(chess.BLACK) in (chess.G8, chess.C8) else 0
+    return white_castled - black_castled
+
+
+def _rook_early_penalty(board: chess.Board) -> int:
+    if board.fullmove_number > 14:
+        return 0
+
+    white_home = {chess.A1, chess.H1}
+    black_home = {chess.A8, chess.H8}
+    white_rooks = set(board.pieces(chess.ROOK, chess.WHITE))
+    black_rooks = set(board.pieces(chess.ROOK, chess.BLACK))
+
+    white_early_rook_moves = len([sq for sq in white_rooks if sq not in white_home])
+    black_early_rook_moves = len([sq for sq in black_rooks if sq not in black_home])
+
+    white_undeveloped_minors = 0
+    black_undeveloped_minors = 0
+    for sq in (chess.B1, chess.G1, chess.C1, chess.F1):
+        piece = board.piece_at(sq)
+        if piece and piece.color == chess.WHITE and piece.piece_type in (chess.KNIGHT, chess.BISHOP):
+            white_undeveloped_minors += 1
+    for sq in (chess.B8, chess.G8, chess.C8, chess.F8):
+        piece = board.piece_at(sq)
+        if piece and piece.color == chess.BLACK and piece.piece_type in (chess.KNIGHT, chess.BISHOP):
+            black_undeveloped_minors += 1
+
+    white_penalty = white_early_rook_moves * (1 + (1 if white_undeveloped_minors >= 2 else 0))
+    black_penalty = black_early_rook_moves * (1 + (1 if black_undeveloped_minors >= 2 else 0))
+    return white_penalty - black_penalty
+
+
 def _king_activity(board: chess.Board) -> int:
     wk = board.king(chess.WHITE)
     bk = board.king(chess.BLACK)
@@ -398,6 +432,8 @@ def extract_feature_dict(board: chess.Board) -> Dict[str, float]:
         "king_safety": float(_king_safety(board)),
         "development": float(_development(board)),
         "early_queen_penalty": float(_early_queen_penalty(board)),
+        "castling_completion": float(_castling_completion(board)),
+        "rook_early_penalty": float(_rook_early_penalty(board)),
         "king_activity": float(_king_activity(board)),
         "king_confinement": float(_king_confinement(board)),
         "hanging_material": float(_hanging_material(board)),
